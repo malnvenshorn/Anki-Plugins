@@ -15,6 +15,15 @@ from anki.hooks import wrap
 from anki.schedv2 import Scheduler
 
 
+def resetLrnCount(self, _old):
+    _old(self)
+
+    # add separate variable for the count of day learn cards
+    self.lrnDayCount = self.col.db.scalar(
+        "select count() from cards where did in %s and queue = 3 and due <= ?"
+        % (self._deckLimit()),  self.today)
+
+
 def fillLrnDay(self, _old):
     if not self.lrnCount:
         return False
@@ -33,12 +42,14 @@ def fillLrnDay(self, _old):
         return True
 
 
-def getCard(self, _old):
-    # make sure queues are filled
-    self._fillNew()
-    self._fillRev()
-    self._fillLrnDay()
+def getLrnDayCard(self, _old):
+    if self._fillLrnDay():
+        self.lrnCount -= 1
+        self.lrnDayCount -= 1
+        return self.col.getCard(self._lrnDayQueue.pop())
 
+
+def getCard(self, _old):
     # learning card due?
     card = self._getLrnCard()
     if card:
@@ -51,17 +62,17 @@ def getCard(self, _old):
             return card
 
     if self.col.conf['newSpread'] == NEW_CARDS_DISTRIBUTE:
-        newCardCount = len(self._newQueue)
+        newCardCount = self.newCount
     else:
         newCardCount = 0
 
     # randomized card from lrnDayQueue, revQueue and newQueue (if the relevant setting is set)
-    totalCount = newCardCount + len(self._revQueue) + len(self._lrnDayQueue)
+    totalCount = newCardCount + self.revCount + self.lrnDayCount
     if totalCount > 0:
         rand = random.randint(1, totalCount)
         if rand <= newCardCount:
             card = self._getNewCard()
-        elif rand <= newCardCount + len(self._revQueue):
+        elif rand <= newCardCount + self.revCount:
             card = self._getRevCard()
         else:
             card = self._getLrnDayCard()
@@ -78,5 +89,7 @@ def getCard(self, _old):
     return self._getLrnCard(collapse=True)
 
 
+Scheduler._resetLrnCount = wrap(Scheduler._resetLrnCount, resetLrnCount, 'around')
 Scheduler._fillLrnDay = wrap(Scheduler._fillLrnDay, fillLrnDay, 'around')
+Scheduler._getLrnDayCard = wrap(Scheduler._getLrnDayCard, getLrnDayCard, 'around')
 Scheduler._getCard = wrap(Scheduler._getCard, getCard, 'around')

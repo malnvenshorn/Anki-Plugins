@@ -23,7 +23,7 @@ def fillLrnDay(self, _old):
         return True
 
     self._lrnDayQueue = self.col.db.list(
-        "select id from cards where did in %s and queue = 3 and due <= ? limit ?"
+        "select id from cards where did in %s and queue = 3 and due <= ? order by due limit ?"
         % self._deckLimit(), self.today, self.queueLimit)
 
     if self._lrnDayQueue:
